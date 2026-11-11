@@ -7,7 +7,7 @@
 | Layer | Choice | Why |
 |---|---|---|
 | Voice platform | Sarvam conversational agents (Samvaad) | One managed pipeline for listening, reasoning and speaking, built for Indian languages and code-mixed speech. |
-| Speech-to-text, language model, text-to-speech | Sarvam's own models inside the agent pipeline; the voice is "Kavya" (conversational) | Handles Hindi with English business words, and switches language mid-call. |
+| Speech-to-text, language model, text-to-speech | Sarvam's own models inside the agent pipeline; the voice is "Simran" (Hinglish support agent) | Handles Hindi with English business words, and switches language mid-call. |
 | Tools | Four API tools that call my server | Keeps the numbers and the actions in code, outside the model. |
 | App | Node.js (Express), plain HTML and JavaScript, Sarvam browser SDK | Small enough to explain line by line. |
 
