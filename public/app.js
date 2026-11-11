@@ -19,6 +19,7 @@ const els = {
   activity: $('activity'),
   summaryCard: $('summaryCard'),
   summary: $('summary'),
+  history: $('history'),
 };
 const hintText = els.hint.textContent;
 
@@ -85,7 +86,10 @@ function onState(state) {
 // The agent's tools run on our server (see server.js). The page asks the server
 // what has happened since the call began and shows it.
 function showActivity(entry) {
-  if (entry.kind === 'summary') return showSummary(entry.summary);
+  if (entry.kind === 'summary') {
+    setTimeout(loadHistory, 1500);
+    return showSummary(entry.summary);
+  }
   els.activity.querySelector('.empty')?.remove();
   const li = document.createElement('li');
   li.className = `item ${entry.kind === 'action' ? 'action' : ''}`;
@@ -136,6 +140,41 @@ function showSummary(summary) {
   add('Outcome', summary.outcome);
   els.summaryCard.hidden = !els.summary.children.length;
 }
+
+// --- Past calls ---------------------------------------------------------------
+// The server keeps each finished call's summary. The agent is told about the
+// latest one when it looks up the store data, so it can follow up on it.
+async function loadHistory() {
+  try {
+    const calls = await (await fetch('/api/sarvam/history')).json();
+    if (!calls.length) return;
+    els.history.innerHTML = '';
+    for (const call of calls) {
+      const item = document.createElement('details');
+      item.className = 'past-call';
+      const when = document.createElement('summary');
+      const date = new Date(call.at);
+      when.textContent = `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}, ${date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}`;
+      item.append(when);
+      const add = (heading, value) => {
+        const items = Array.isArray(value) ? value : value ? [value] : [];
+        if (!items.length) return;
+        const h = document.createElement('h3');
+        h.textContent = heading;
+        const ul = document.createElement(items.length === 1 ? 'p' : 'ul');
+        if (items.length === 1) ul.textContent = items[0];
+        else for (const text of items) ul.append(Object.assign(document.createElement('li'), { textContent: text }));
+        item.append(h, ul);
+      };
+      add('Overview', call.overview);
+      add('Agreed next steps', call.nextSteps);
+      add('Actions taken', call.actions);
+      els.history.append(item);
+    }
+    els.history.firstElementChild.open = true;
+  } catch {}
+}
+loadHistory();
 
 async function pollActivity() {
   try {

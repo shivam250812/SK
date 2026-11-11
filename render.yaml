@@ -8,3 +8,5 @@ services:
     envVars:
       - key: SARVAM_AGENT_API_KEY
         sync: false
+      - key: DATABASE_URL
+        sync: false

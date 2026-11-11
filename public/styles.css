@@ -346,3 +346,36 @@ h2 {
     padding-right: 16px;
   }
 }
+
+.past-call {
+  border-top: 1px solid var(--line, #e5e7eb);
+  padding: 10px 0;
+}
+
+.past-call:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+.past-call summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.past-call h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 10px 0 4px;
+}
+
+.past-call p,
+.past-call ul {
+  margin: 0;
+  padding-left: 0;
+}
+
+.past-call ul {
+  padding-left: 18px;
+}

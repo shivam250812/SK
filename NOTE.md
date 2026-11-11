@@ -24,7 +24,8 @@ Browser <--(4) what the agent did, shown on the page-- Node server
 1. The seller clicks "Call your KAM". The server gets a one-time connection address from Sarvam, so the API key never reaches the browser.
 2. The browser streams audio both ways with the agent and shows the transcript.
 3. The agent calls `get_seller_data` for the numbers, `log_seller_team_note` and `schedule_followup` for actions, and Sarvam sends `send_call_summary` when the call ends.
-4. Each tool call appears on the page as it happens, the written summary appears at the end, and the whole call is saved to a log.
+4. Each tool call appears on the page as it happens and the written summary appears at the end.
+5. The summary and actions are saved to a Postgres database. The page lists past calls, and on the next call the data tool tells the agent what was agreed last time, so it can ask whether the seller did it.
 
 ## Conversation design
 
@@ -39,6 +40,7 @@ Average selling price is flat at ₹500, so pricing is not the cause. Orders fel
 - **Numbers come from code.** The tool returns the five metrics and their differences already worked out. The agent is told never to calculate or add claims the data does not show.
 - **Stop the damage first.** The first recommendation is to correct the online stock count, which stops cancellations the same day.
 - **Promises are backed.** The agent may only say "noted for the seller team" or name a follow-up day after the matching tool has run.
+- **It remembers.** A real account manager follows up. The agent opens a repeat call by checking on the steps agreed last time.
 - **No overpromising.** Restocking can win back a good part of the lost orders, not all.
 
 ## How I tested and improved it
@@ -57,7 +59,8 @@ Measured on recordings: response time about 1.7 seconds; the agent's share of ta
 ## Assumptions
 
 - The sample data is one seller, last month against this month, with no category or product split. The agent says so if asked.
-- The note and follow-up are saved to a file on my server. Nothing is sent to a Snapdeal system.
+- The note, follow-up and call history are saved on my own server and database. Nothing is sent to a Snapdeal system.
+- The sample data is one seller, so all calls are stored under one demo seller. Anyone using the demo link sees the same history.
 - The seller's name and store are not in the sample data, so the agent does not use them.
 
 ## Limits and next steps

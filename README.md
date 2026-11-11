@@ -39,7 +39,8 @@ Browser <--(4) what the agent did, shown on the page-- Node server
 1. The page asks the server to start a call. The server gets a one-time connection address from Sarvam using the API key, so the key never reaches the browser.
 2. The browser connects to the agent and streams audio both ways. The transcript appears as the call runs.
 3. The agent calls tools on this server for the seller's numbers and for its actions.
-4. The page shows each tool call as it happens and a written summary when the call ends. Every call is saved in `logs/`.
+4. The page shows each tool call as it happens and a written summary when the call ends.
+5. The summary and the actions taken are saved to a database. The page lists past calls, and on the next call the agent is told what was agreed last time, so it can ask whether those steps were done.
 
 ## Files
 
@@ -50,6 +51,7 @@ public/
   vendor/          Sarvam's browser SDK, bundled with `npm run build:sdk`
   styles.css
 server.js          starts calls with the key kept private, runs the agent's tools, saves call logs
+store.js           call history: Postgres when DATABASE_URL is set, a local file otherwise
 data.js            the sample seller data from the assignment
 SARVAM_SETUP.md    how to connect the tools in Sarvam, and the instructions the agent needs
 NOTE.md            the one-page technical note
@@ -61,10 +63,10 @@ Sarvam calls these over the internet, so they work only once the server is deplo
 
 | Tool | Address | What it does |
 |---|---|---|
-| `get_seller_data` | `GET /api/tools/seller-data` | Returns the five metrics for last month and this month, with the differences already worked out, so the model does no arithmetic. |
+| `get_seller_data` | `GET /api/tools/seller-data` | Returns the five metrics for last month and this month, with the differences already worked out, so the model does no arithmetic. Also returns what was agreed on the seller's previous call, if there was one. |
 | `log_seller_team_note` | `POST /api/tools/note` | Saves a note for the seller team. |
 | `schedule_followup` | `POST /api/tools/followup` | Books a follow-up and returns the day and date to say. |
-| `send_call_summary` | `POST /api/tools/call-summary` | Sent by Sarvam when the call ends. Shows the written summary on the page. |
+| `send_call_summary` | `POST /api/tools/call-summary` | Sent by Sarvam when the call ends. Shows the written summary on the page and saves the call to the history. |
 
 The note, follow-up and summary are saved to files on this server. Nothing is sent to a Snapdeal system.
 
@@ -76,6 +78,7 @@ Set in `.env`:
 |---|---|
 | `SARVAM_AGENT_API_KEY` | Required. The agent key from the Sarvam dashboard. |
 | `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, `SARVAM_APP_ID` | Optional. Point the page at a different agent. The defaults in `server.js` are the "Snapdeal Virtual KAM" agent. |
+| `DATABASE_URL` | Optional. Postgres connection string for call history (for example a free Neon database). Without it, history is kept in `logs/calls.json` and is lost when a hosted server restarts. |
 | `SARVAM_TOOL_TOKEN` | Optional. If set, tool calls must send `Authorization: Bearer <value>`. |
 | `PORT` | Optional. Default 3000. |
 
@@ -83,4 +86,4 @@ The agent must have a committed version in Sarvam. A draft cannot be called.
 
 ## Deploy
 
-`render.yaml` is included for Render: create a Blueprint from this repository and set `SARVAM_AGENT_API_KEY`. Then follow [SARVAM_SETUP.md](SARVAM_SETUP.md), using the deployed address in each tool. The microphone works on `localhost` and on any HTTPS address.
+`render.yaml` is included for Render: create a Blueprint from this repository and set `SARVAM_AGENT_API_KEY` and `DATABASE_URL`. Then follow [SARVAM_SETUP.md](SARVAM_SETUP.md), using the deployed address in each tool. The microphone works on `localhost` and on any HTTPS address.

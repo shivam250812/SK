@@ -14,10 +14,13 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 
 import { metrics } from './data.js';
+import { saveCall, listCalls, storeKind } from './store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
 const LOG_DIR = path.join(__dirname, 'logs');
+// The sample data describes one seller, so every call belongs to this seller.
+const SELLER_ID = process.env.SELLER_ID || 'demo-seller';
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -120,8 +123,28 @@ tools.use((req, _res, next) => {
 tools.get('/recent-calls', (_req, res) => res.json(lastCalls));
 const sessionOf = (req) => clip(req.input.session, 80) || null;
 
-tools.get('/seller-data', (req, res) => {
+// What the agent is told about the seller's last call, so it can follow up on it.
+async function previousCall() {
+  try {
+    const [last] = await listCalls(SELLER_ID, 1);
+    if (!last) return { had_previous_call: false };
+    const days = Math.floor((Date.now() - new Date(last.at).getTime()) / 86400000);
+    return {
+      had_previous_call: true,
+      previous_call_when: days === 0 ? 'earlier today' : days === 1 ? 'yesterday' : `${days} days ago`,
+      previous_call_summary: last.overview,
+      previous_call_agreed_steps: last.nextSteps.join('; '),
+      previous_call_actions: last.actions.join('; '),
+    };
+  } catch (err) {
+    console.log(`Could not read call history: ${err.message}`);
+    return { had_previous_call: false };
+  }
+}
+
+tools.get('/seller-data', async (req, res) => {
   const { lastMonth: last, thisMonth: now } = metrics;
+  const previous = await previousCall();
   record('data', 'Looked up the store data', 'Sales, orders, cancellations, selling price and out-of-stock products, last month and this month.', {
     session: sessionOf(req),
   });
@@ -143,6 +166,7 @@ tools.get('/seller-data', (req, res) => {
     out_of_stock_products_this_month: now.oosProducts,
     newly_out_of_stock_products: now.oosProducts - last.oosProducts,
     not_available: 'There is no split by category or product, and no reason for why stock ran out. Ask the seller.',
+    ...previous,
   });
 });
 
@@ -176,11 +200,27 @@ tools.post('/call-summary', (req, res) => {
   };
   // An empty summary means the agent's variables were not filled. Do not show a blank card.
   const hasContent = summary.overview || summary.issues.length || summary.recommendations.length || summary.nextSteps.length;
-  if (hasContent) record('summary', 'Call summary saved', summary.overview, { session: sessionOf(req), summary });
+  if (hasContent) {
+    record('summary', 'Call summary saved', summary.overview, { session: sessionOf(req), summary });
+    // Keep the call in the history, with the actions taken since its data lookup.
+    const start = activity.map((e) => e.kind).lastIndexOf('data');
+    const actions = activity.slice(Math.max(start, 0)).filter((e) => e.kind === 'action').map((e) => (e.detail ? `${e.title}: ${e.detail}` : e.title));
+    saveCall(SELLER_ID, { ...summary, actions }).catch((err) => console.log(`Could not save call history: ${err.message}`));
+  }
   res.json({ status: hasContent ? 'saved' : 'empty' });
 });
 
 app.use('/api/tools', tools);
+
+// The seller's past calls, most recent first, for the page to show.
+app.get('/api/sarvam/history', async (_req, res) => {
+  try {
+    res.json(await listCalls(SELLER_ID, 5));
+  } catch (err) {
+    console.log(`Could not read call history: ${err.message}`);
+    res.json([]);
+  }
+});
 
 // What the tools did since a call began, for the page to show.
 app.get('/api/sarvam/activity', (req, res) => {
@@ -209,6 +249,6 @@ app.post('/api/sarvam/call-log', express.json({ limit: '500kb' }), (req, res) =>
 });
 
 app.listen(PORT, () => {
-  console.log(`Virtual KAM running at http://localhost:${PORT}`);
+  console.log(`Virtual KAM running at http://localhost:${PORT} (call history: ${storeKind})`);
   if (!SARVAM.key) console.log('SARVAM_AGENT_API_KEY is not set. The page will load, but calls will not connect.');
 });
