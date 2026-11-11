@@ -90,10 +90,12 @@ function record(kind, title, detail, extra = {}) {
 
 const clip = (value, max = 600) => (value == null ? '' : String(value).trim().slice(0, max));
 // Accepts a real list, or one string with items separated by new lines, semicolons or bullets.
+// Values the agent writes when it has nothing to say.
+const EMPTY = /^(none|null|n\/?a|nil|not applicable|-+)\.?$/i;
 const toList = (value) =>
   (Array.isArray(value) ? value : String(value ?? '').split(/\n|;|•/))
     .map((item) => clip(item, 300).replace(/^[-*\d.)\s]+/, ''))
-    .filter(Boolean)
+    .filter((item) => item && !EMPTY.test(item))
     .slice(0, 6);
 
 const tools = express.Router();
@@ -126,14 +128,16 @@ const sessionOf = (req) => clip(req.input.session, 80) || null;
 // What the agent is told about the seller's last call, so it can follow up on it.
 async function previousCall() {
   try {
-    const [last] = await listCalls(SELLER_ID, 1);
+    // The last call that ended with agreed steps. Calls that were cut short have
+    // nothing to follow up on, and their summaries can hold half-heard numbers.
+    const recent = await listCalls(SELLER_ID, 5);
+    const last = recent.find((call) => call.nextSteps.some((step) => !EMPTY.test(step)));
     if (!last) return { had_previous_call: false };
     const days = Math.floor((Date.now() - new Date(last.at).getTime()) / 86400000);
     return {
       had_previous_call: true,
       previous_call_when: days === 0 ? 'earlier today' : days === 1 ? 'yesterday' : `${days} days ago`,
-      previous_call_summary: last.overview,
-      previous_call_agreed_steps: last.nextSteps.join('; '),
+      previous_call_agreed_steps: last.nextSteps.filter((step) => !EMPTY.test(step)).join('; '),
       previous_call_actions: last.actions.join('; '),
     };
   } catch (err) {
