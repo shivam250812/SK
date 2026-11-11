@@ -49,7 +49,7 @@ const SARVAM = {
 app.get('/api/metrics', (_req, res) => res.json(metrics));
 
 app.get('/api/sarvam/config', (_req, res) =>
-  res.json({ hasKey: Boolean(SARVAM.key), org_id: SARVAM.org, workspace_id: SARVAM.workspace, app_id: SARVAM.app, greeting: SARVAM.greeting }),
+  res.json({ hasKey: Boolean(SARVAM.key), org_id: SARVAM.org, workspace_id: SARVAM.workspace, app_id: SARVAM.app, greeting: SARVAM.greeting, history: storeKind }),
 );
 
 app.get('/api/sarvam/orgs/:org/workspaces/:workspace/apps/:app/url', async (req, res) => {
