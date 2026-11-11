@@ -2,7 +2,7 @@
 
 **Demo:** https://snapdeal-virtual-kam-d0to.onrender.com · **Code:** https://github.com/shivam250812/SK
 
-**What it is.** A browser voice agent, "Priya", that a Snapdeal seller talks to when sales drop. She pulls up the seller's numbers, asks what the data cannot answer, recommends three actions, logs a note and a follow-up call, and closes with a summary. She follows the seller's language (English, Hindi and nine more) and can be interrupted.
+**What it is.** A browser voice agent, "Priya", that a Snapdeal seller talks to when sales drop. She pulls up the seller's numbers, asks what the data cannot answer, recommends three actions, logs a note and a follow-up call, and closes with a summary. She can be interrupted, and she follows the seller's language mid-call across 11 languages: Hindi, English, Bengali, Gujarati, Kannada, Malayalam, Marathi, Odia, Punjabi, Tamil and Telugu.
 
 ## Models and voice technology
 
@@ -29,13 +29,13 @@ The model holds no store numbers. Everything it knows or does goes through four 
 3. Each tool call appears on the page as it happens. The summary appears when the call ends.
 4. The call is saved to Postgres. On the next call the agent asks whether the agreed steps were done.
 
-## Design decisions
+## What makes it different
 
-- **Numbers come from code, not the prompt.** The agent may not calculate or invent a figure.
-- **Reading of the data:** price is flat at ₹500, so pricing is not the cause. Out-of-stock products rose from 5 to 18 and cancellations from 8% to 14%: products ran out and orders for them were cancelled.
-- **Stop the damage first.** The first action is always to correct the online stock count today.
-- **Promises are backed.** The agent says "noted" or names a follow-up day only after that tool has run.
-- **Honest about limits.** Asked about a category, it says it has store-level numbers only.
+- **It remembers.** Every call is saved. On the next call Priya asks whether the steps agreed last time were done, as a real account manager would.
+- **You can see it work.** The page shows each action live (data lookup, note, follow-up), then a written summary and the list of past calls.
+- **It acts, not only talks.** The note and the follow-up are really recorded, and she says "noted" or names the day only after that tool has run.
+- **Numbers come from code, not the prompt.** She may not calculate or invent a figure, and says she has store-level numbers only when asked about a category.
+- **Advice a seller can use today.** Price is flat at ₹500, so pricing is ruled out; out-of-stock products rose from 5 to 18 and cancellations from 8% to 14%. The first action is always to correct the online stock count today, and each action carries a time or an amount.
 
 ## How I tested it
 
