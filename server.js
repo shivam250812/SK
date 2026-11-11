@@ -1,52 +1,28 @@
 // Virtual KAM server.
 //
-// Browser  <-- WebSocket -->  this server  <-- Gemini Live API -->  model
-//
-// The browser streams microphone audio here. This server relays it to the
-// Gemini Live session, relays the model's speech back, and runs the tools the
-// model calls. The API key and the tool logic never leave the server.
+// The voice agent itself runs on Sarvam. This server does three small jobs:
+//   1. serves the page in public/
+//   2. starts calls: fetches a one-time connection address from Sarvam, so the
+//      API key never reaches the browser
+//   3. runs the agent's tools (seller data, note, follow-up, call summary) and
+//      tells the page what the agent did
 
 import 'dotenv/config';
 import fs from 'node:fs';
-import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import { WebSocketServer } from 'ws';
-import { GoogleGenAI, Modality } from '@google/genai';
 
-import { seller, metrics } from './kam/data.js';
-import { buildSystemInstruction, greetingCue, KAM_NAME } from './kam/prompt.js';
-import { functionDeclarations, runTool, createCallState } from './kam/tools.js';
+import { metrics } from './data.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3000;
-const API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-const VOICES = ['Sulafat', 'Aoede', 'Achernar', 'Leda', 'Vindemiatrix', 'Kore'];
-const DEFAULT_VOICE = process.env.GEMINI_VOICE || VOICES[0];
-const LOG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'logs');
-
-// Tried in order until one accepts the session. Set GEMINI_LIVE_MODEL to pin one.
-const MODELS = [
-  process.env.GEMINI_LIVE_MODEL,
-  'gemini-3.8-live',
-  'gemini-3.1-flash-live-preview',
-  'gemini-2.5-flash-live-preview',
-].filter((m, i, all) => m && all.indexOf(m) === i);
-
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
+const LOG_DIR = path.join(__dirname, 'logs');
 
 const app = express();
-// The Sarvam agent page is the home page once its key is set. The Gemini
-// version stays available at /index.html.
-app.get('/', (_req, res, next) =>
-  process.env.SARVAM_AGENT_API_KEY || process.env.SARVAM_API_KEY ? res.redirect('/sarvam.html') : next(),
-);
 app.use(express.static(path.join(__dirname, 'public')));
-app.get('/api/seller', (_req, res) => res.json({ seller, metrics, kamName: KAM_NAME, voices: VOICES, defaultVoice: DEFAULT_VOICE }));
-app.get('/api/health', (_req, res) => res.json({ ok: true, hasKey: Boolean(API_KEY) }));
 
-// --- Sarvam agent (public/sarvam.html) --------------------------------------
+// --- Starting a call ---------------------------------------------------------
 // The page talks to the agent built in Sarvam's dashboard through Sarvam's
 // browser SDK. The SDK first asks for a one-time signed WebSocket address; that
 // request comes here so the Sarvam API key is added on the server and never
@@ -54,7 +30,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, hasKey: Boolean(API_K
 const SARVAM = {
   // The agent service needs its own key (Samvaad Settings > API Key). The sk_
   // key for Sarvam's model APIs is rejected with "Invalid API key format".
-  key: process.env.SARVAM_AGENT_API_KEY || process.env.SARVAM_API_KEY || '',
+  key: process.env.SARVAM_AGENT_API_KEY || '',
   org: process.env.SARVAM_ORG_ID || '01a1c4b1-c611-7933-94b0-81837d7bb68b',
   workspace: process.env.SARVAM_WORKSPACE_ID || '01a1c4b1-c617-71a2-9ce2-1fa22b300779',
   app: process.env.SARVAM_APP_ID || 'Conversatio-c85245fc-bf92',
@@ -206,238 +182,7 @@ app.post('/api/sarvam/call-log', express.json({ limit: '500kb' }), (req, res) =>
   }
 });
 
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: '/ws' });
-
-// Open a Live session on one model. Resolves once the model confirms setup,
-// rejects if the connection fails or closes before that.
-function connectModel(model, language, voice, handlers) {
-  return new Promise((resolve, reject) => {
-    let session = null;
-    let setupDone = false;
-    let settled = false;
-
-    const finish = (err) => {
-      if (settled) return;
-      if (err) {
-        settled = true;
-        clearTimeout(timer);
-        reject(err);
-      } else if (session && setupDone) {
-        settled = true;
-        clearTimeout(timer);
-        resolve(session);
-      }
-    };
-    const timer = setTimeout(() => {
-      try {
-        session?.close();
-      } catch {}
-      finish(new Error('timed out waiting for the model'));
-    }, 12000);
-
-    ai.live
-      .connect({
-        model,
-        config: {
-          responseModalities: [Modality.AUDIO],
-          systemInstruction: buildSystemInstruction(language),
-          tools: [{ functionDeclarations }],
-          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } },
-          inputAudioTranscription: {},
-          outputAudioTranscription: {},
-        },
-        callbacks: {
-          onopen: () => {},
-          onmessage: (message) => {
-            if (message.setupComplete) {
-              setupDone = true;
-              finish();
-              return;
-            }
-            if (settled) handlers.onMessage(message);
-          },
-          onerror: (event) => {
-            const err = new Error(event?.message || event?.error?.message || 'connection error');
-            if (settled) handlers.onError(err);
-            else finish(err);
-          },
-          onclose: (event) => {
-            if (settled) handlers.onClose(event?.reason || '');
-            else finish(new Error(event?.reason || 'connection closed during setup'));
-          },
-        },
-      })
-      .then((s) => {
-        session = s;
-        finish();
-      })
-      .catch((err) => finish(err));
-  });
-}
-
-wss.on('connection', (client) => {
-  const state = createCallState();
-  let session = null;
-  let starting = false;
-  let micRate = 16000;
-  let language = 'auto';
-  let voice = DEFAULT_VOICE;
-
-  // Each call is saved to logs/ so conversations can be reviewed afterwards.
-  const lines = [];
-  let current = null;
-  const flush = () => {
-    if (current?.text.trim()) lines.push(`${current.role}: ${current.text.trim()}`);
-    current = null;
-  };
-  const log = (line) => {
-    flush();
-    lines.push(`[${line}]`);
-  };
-  const logSpeech = (role, text) => {
-    if (current?.role !== role) {
-      flush();
-      current = { role, text: '' };
-    }
-    current.text += text;
-  };
-  const saveLog = () => {
-    flush();
-    if (lines.length < 2) return;
-    try {
-      fs.mkdirSync(LOG_DIR, { recursive: true });
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      fs.writeFileSync(path.join(LOG_DIR, `call-${stamp}.txt`), lines.join('\n') + '\n');
-    } catch (err) {
-      console.warn('could not save call log:', err.message);
-    }
-    lines.length = 0;
-  };
-
-  const send = (payload) => {
-    if (client.readyState === client.OPEN) client.send(JSON.stringify(payload));
-  };
-
-  const onMessage = (message) => {
-    const content = message.serverContent;
-    if (content) {
-      // After a held action the model sometimes repeats its question. Drop
-      // that audio so the seller hears the question once.
-      const muted = state.muteUntilTurnEnds;
-      if (content.turnComplete || content.inputTranscription?.text) state.muteUntilTurnEnds = false;
-      if (muted && !content.inputTranscription?.text) {
-        if (content.interrupted) send({ type: 'interrupted' });
-        if (content.turnComplete) send({ type: 'turn_complete' });
-        return handleToolCalls(message);
-      }
-      for (const part of content.modelTurn?.parts || []) {
-        if (part.inlineData?.data && !part.thought) send({ type: 'audio', data: part.inlineData.data });
-      }
-      if (content.inputTranscription?.text) state.noteSellerSpoke(content.inputTranscription.text);
-      if (content.outputTranscription?.text) state.noteAgentSaid(content.outputTranscription.text);
-      if (content.inputTranscription?.text) logSpeech('SELLER', content.inputTranscription.text);
-      if (content.outputTranscription?.text) logSpeech('PRIYA', content.outputTranscription.text);
-      if (content.interrupted) log('seller interrupted');
-      if (content.inputTranscription?.text) send({ type: 'transcript', role: 'seller', text: content.inputTranscription.text });
-      if (content.outputTranscription?.text) send({ type: 'transcript', role: 'kam', text: content.outputTranscription.text });
-      if (content.interrupted) send({ type: 'interrupted' });
-      if (content.turnComplete) send({ type: 'turn_complete' });
-    }
-
-    handleToolCalls(message);
-  };
-
-  const handleToolCalls = (message) => {
-    if (message.toolCall?.functionCalls?.length) {
-      const functionResponses = message.toolCall.functionCalls.map((call) => {
-        const out = runTool(state, call.name, call.args);
-        if (out.kind === 'held' && out.mute) state.muteUntilTurnEnds = true;
-        console.log(`[tool${out.kind === 'held' ? ' held' : ''}] ${call.name}(${JSON.stringify(call.args || {})})`);
-        log(`tool${out.kind === 'held' ? ' HELD' : ''}: ${call.name} ${JSON.stringify(call.args || {})}`);
-        send({ type: 'tool', name: call.name, kind: out.kind, label: out.label, action: out.action || null });
-        if (call.name === 'send_call_summary' && state.summary) send({ type: 'summary', summary: state.summary });
-        return { id: call.id, name: call.name, response: { result: out.result } };
-      });
-      session?.sendToolResponse({ functionResponses });
-    }
-
-    if (message.goAway) send({ type: 'notice', message: 'The call is close to its time limit.' });
-  };
-
-  async function startCall() {
-    if (!ai) {
-      send({ type: 'error', message: 'GEMINI_API_KEY is not set on the server. Add it to .env and restart.' });
-      return;
-    }
-    const failures = [];
-    for (const model of MODELS) {
-      try {
-        session = await connectModel(model, language, voice, {
-          onMessage,
-          onError: (err) => send({ type: 'error', message: err.message }),
-          onClose: (reason) => {
-            session = null;
-            send({ type: 'ended', reason });
-          },
-        });
-        console.log(`[call] connected on ${model}`);
-        send({ type: 'ready', model, voice });
-        log(`call started: model=${model} voice=${voice} language=${language}`);
-        session.sendRealtimeInput({ text: greetingCue });
-        return;
-      } catch (err) {
-        console.warn(`[call] ${model} failed: ${err.message}`);
-        failures.push(`${model}: ${err.message}`);
-      }
-    }
-    send({ type: 'error', message: `Could not start a voice session. ${failures.join(' | ')}` });
-  }
-
-  client.on('message', (data, isBinary) => {
-    if (isBinary) {
-      // Raw 16-bit PCM from the microphone.
-      if (session) {
-        session.sendRealtimeInput({
-          audio: { data: Buffer.from(data).toString('base64'), mimeType: `audio/pcm;rate=${micRate}` },
-        });
-      }
-      return;
-    }
-    let msg;
-    try {
-      msg = JSON.parse(data.toString());
-    } catch {
-      return;
-    }
-    // The browser heard the seller's voice on the microphone. Backs up the
-    // transcription signal for the listen-first guard.
-    if (msg.type === 'voice') state.sellerHasSpoken = true;
-    if (msg.type === 'start' && !session && !starting) {
-      starting = true;
-      micRate = Number(msg.sampleRate) || 16000;
-      language = ['auto', 'english', 'hinglish'].includes(msg.language) ? msg.language : 'auto';
-      voice = VOICES.includes(msg.voice) ? msg.voice : DEFAULT_VOICE;
-      state.languageMode = language;
-      if (language !== 'auto') state.sellerLanguage = language;
-      startCall().finally(() => {
-        starting = false;
-        if (client.readyState !== client.OPEN) session?.close();
-      });
-    }
-  });
-
-  client.on('close', () => {
-    saveLog();
-    try {
-      session?.close();
-    } catch {}
-    session = null;
-  });
-});
-
-server.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Virtual KAM running at http://localhost:${PORT}`);
-  if (!API_KEY) console.log('GEMINI_API_KEY is not set. The page will load, but calls will not connect.');
-  console.log(`Sarvam agent page: http://localhost:${PORT}/sarvam.html${SARVAM.key ? '' : ' (SARVAM_AGENT_API_KEY is not set, calls will not connect)'}`);
+  if (!SARVAM.key) console.log('SARVAM_AGENT_API_KEY is not set. The page will load, but calls will not connect.');
 });

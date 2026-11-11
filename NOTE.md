@@ -1,56 +1,66 @@
-# Mini AI Virtual KAM: technical note
+# Mini AI Voice KAM: technical note
 
-**What it is.** A browser voice agent ("Priya") that a Snapdeal seller can call when sales drop. It listens, pulls the seller's numbers, asks the questions the data cannot answer, explains the cause, and then does the follow-up work on the call instead of only giving advice.
+**What it is.** A browser voice agent ("Priya") that a Snapdeal seller can talk to when sales drop. She listens, pulls up the seller's numbers, asks what the data cannot answer, recommends two or three actions, logs a note and a follow-up, and closes with a summary. She follows the seller's language: English, Hindi, or another Indian language such as Marathi.
 
 ## Models and voice technology
 
 | Layer | Choice | Why |
 |---|---|---|
-| Voice and reasoning | Gemini Live API, model `gemini-3.8-live`, voice "Sulafat" | One speech-to-speech model handles listening, reasoning and speaking. Replies start in about a second, the seller can interrupt mid-sentence, and it speaks English and Hinglish. |
-| Speech-to-text, text-to-speech | None as separate services | The Live model takes audio in and gives audio out. Its built-in transcription is used only to show the conversation on screen. |
-| Tools | Gemini function calling, 9 functions run on my server | Keeps numbers and actions in code, outside the model. |
-| App | Node.js (Express and WebSocket), plain HTML and JavaScript | Small enough to explain line by line. |
+| Voice platform | Sarvam conversational agents (Samvaad) | One managed pipeline for listening, reasoning and speaking, built for Indian languages and code-mixed speech. |
+| Speech-to-text, language model, text-to-speech | Sarvam's own models, as configured in the agent: **[fill in from the agent's Settings]** | Handles Hindi with English business words, and switches language mid-call. |
+| Tools | Four API tools that call my server | Keeps the numbers and the actions in code, outside the model. |
+| App | Node.js (Express), plain HTML and JavaScript, Sarvam browser SDK | Small enough to explain line by line. |
 
 ## Workflow
 
 ```
-Browser mic --16 kHz PCM--> Node server --> Gemini Live session
-Browser speaker <--24 kHz PCM-- Node server <-- speech + tool calls
-                                   |
-                                   +-- runs tools on mock seller data, pushes results to the page
+Browser --(1) start call--> Node server --adds API key--> Sarvam
+Browser <==(2) live audio both ways + transcript==> Sarvam agent
+                                                       |
+Node server <--(3) tool calls: data, note, follow-up, summary
+Browser <--(4) what the agent did, shown on the page-- Node server
 ```
 
-1. The seller clicks "Call your KAM". The browser streams microphone audio to the server, which relays it to Gemini. The API key stays on the server.
-2. The agent greets the seller and waits for the problem.
-3. It calls three analysis tools: account snapshot, stock-out analysis, cancellation breakdown. All arithmetic is done in code, and the prompt forbids any number that is not in a tool result.
-4. It asks two or three follow-up questions, one at a time: why the bestsellers ran out, whether the same stock is sold offline, whether anything else changed.
-5. It gives the diagnosis and two or three recommendations fitted to the answers. For example, it plans a restock of two products instead of four if the seller says cash is tight.
-6. With the seller's yes, it takes the actions (all mock): creates a restock plan with quantities, switches on an inventory safeguard, sets low-stock alerts, books a follow-up call, and sends a written summary. Each one appears on screen as it happens.
-7. It closes with a spoken summary of issues, recommendations and next steps.
+1. The seller clicks "Call your KAM". The server gets a one-time connection address from Sarvam, so the API key never reaches the browser.
+2. The browser streams audio both ways with the agent and shows the transcript.
+3. The agent calls `get_seller_data` for the numbers, `log_seller_team_note` and `schedule_followup` for actions, and Sarvam sends `send_call_summary` when the call ends.
+4. Each tool call appears on the page as it happens, the written summary appears at the end, and the whole call is saved to a log.
+
+## Conversation design
+
+Greet and listen; fetch the data; ask at most two questions, one of them open, to find what the data cannot show (why stock ran out); share the drop, then the cause; recommend actions fitted to the answers, most urgent first; recap once and say goodbye. Style rules keep it sounding like a call: short turns, one question at a time, no repeated questions, replies in the seller's language.
 
 ## What the data says
 
-Average selling price is flat at ₹500, so this is a volume problem, not a pricing one. Out-of-stock products rose from 5 to 18 and cancellations from 8% to 14%. The agent's reading: demand is healthy, bestsellers ran out, and orders were accepted without stock and then cancelled.
+Average selling price is flat at ₹500, so pricing is not the cause. Orders fell from 400 to 270 (130 fewer, ₹65,000). Out-of-stock products rose from 5 to 18 and cancellations from 8% to 14%. The agent's reading: products ran out, orders kept arriving for items that were gone, and those orders were cancelled.
 
 ## Design decisions
 
-- **Ownership, with consent.** The agent proposes an action, waits for a yes, then acts. This is enforced in code as well as in the prompt: an action called before the seller has answered the agent's question is held and nothing changes.
-- **Listen first.** No tool runs until the seller has spoken.
-- **Language follows the seller.** English by default, Hinglish when the seller uses it, because many sellers are more comfortable in Hindi.
-- **Human handover.** Payments, suspensions and disputes go to a human KAM through an escalation tool.
+- **Numbers come from code.** The tool returns the five metrics and their differences already worked out. The agent is told never to calculate or add claims the data does not show.
+- **Stop the damage first.** The first recommendation is to correct the online stock count, which stops cancellations the same day.
+- **Promises are backed.** The agent may only say "noted for the seller team" or name a follow-up day after the matching tool has run.
+- **No overpromising.** Restocking can win back a good part of the lost orders, not all.
 
-## Assumptions (mock data I added)
+## How I tested and improved it
 
-The brief gives five headline metrics. To let the agent go one level deeper I added the following, built to add up exactly to the given totals (checked by `npm run smoke`):
+I rated each test call against the assignment's five criteria and measured recordings for response time, talk share and turn length. Each round of findings went back into the instructions.
 
-- Seller identity: Ramesh Gupta, Gupta Home Essentials, Home & Kitchen, Jaipur, 64 listings.
-- Product split: 4 out-of-stock bestsellers lost 116 of the 130 lost orders (₹58,000 of the ₹65,000 drop). In-stock products went from 186 to 190 orders.
-- Cancellation reasons: seller-side "no stock" cancellations rose from 6 to 21 orders, while customer cancellations and failed deliveries fell.
-- "Orders" is read as gross orders, with the cancellation rate applied to it.
-- The agent's actions (restock plan, safeguard, alerts, follow-up) are treated as free account settings.
-- All actions are simulated. Nothing is sent to WhatsApp or any Snapdeal system.
+| Version | Main change | Score (my own rating, /100) |
+|---|---|---|
+| First call | Baseline | 64 |
+| + root-cause questions, all five metrics | Found shared stock and supplier delay | 73 |
+| + immediate fix, numbers, single summary | Advice fitted to the seller | 77 |
+| + open questions, data in two turns | Less interrogation, shorter call | 80 |
+
+Measured on recordings: response time about 1.7 seconds; the agent's share of talk time fell from 66% to 61%.
+
+## Assumptions
+
+- The sample data is one seller, last month against this month, with no category or product split. The agent says so if asked.
+- The note and follow-up are saved to a file on my server. Nothing is sent to a Snapdeal system.
+- The seller's name and store are not in the sample data, so the agent does not use them.
 
 ## Limits and next steps
 
-- Tested with scripted English and Hinglish conversations and with a synthetic voice through the browser. Not yet tested with many real speakers or noisy lines.
-- Next: real telephony so sellers can dial in, live seller data in place of mock data, and proactive outbound calls when the agent sees a bestseller about to run out, before sales drop.
+- Tested by one speaker in Hindi, Marathi and English. Not yet tested on noisy lines or with many speakers.
+- Next: live seller data behind the same data tool, tools that update stock counts and set low-stock alerts, and a phone number so sellers can dial in.

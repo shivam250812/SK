@@ -4,7 +4,7 @@ A browser voice agent ("Priya") that a Snapdeal seller can talk to when sales dr
 
 The agent is built on [Sarvam](https://www.sarvam.ai) conversational agents. This repository holds the browser page, the server that keeps the API key private, and the tools the agent calls.
 
-See [NOTE_SARVAM.md](NOTE_SARVAM.md) for the models, workflow, design decisions, testing and assumptions.
+See [NOTE.md](NOTE.md) for the models, workflow, design decisions, testing and assumptions.
 
 ## Run it
 
@@ -45,15 +45,14 @@ Browser <--(4) what the agent did, shown on the page-- Node server
 
 ```
 public/
-  sarvam.html      the page: call button, transcript, sample data, activity and summary panels
-  sarvam.js        starts and stops the call, shows the transcript and what the agent did
-  vendor/          Sarvam's browser SDK, bundled with `npm run build:sarvam`
+  index.html       the page: call button, transcript, sample data, activity and summary panels
+  app.js           starts and stops the call, shows the transcript and what the agent did
+  vendor/          Sarvam's browser SDK, bundled with `npm run build:sdk`
   styles.css
-server.js          key proxy, the agent's tools, activity feed and call log
-kam/data.js        the sample seller data from the assignment
+server.js          starts calls with the key kept private, runs the agent's tools, saves call logs
+data.js            the sample seller data from the assignment
 SARVAM_SETUP.md    how to connect the tools in Sarvam, and the instructions the agent needs
-NOTE_SARVAM.md     the one-page technical note
-sarvam_hello.py    a one-call check of a Sarvam model API key (not used by the app)
+NOTE.md            the one-page technical note
 ```
 
 ## The agent's tools
@@ -85,7 +84,3 @@ The agent must have a committed version in Sarvam. A draft cannot be called.
 ## Deploy
 
 `render.yaml` is included for Render: create a Blueprint from this repository and set `SARVAM_AGENT_API_KEY`. Then follow [SARVAM_SETUP.md](SARVAM_SETUP.md), using the deployed address in each tool. The microphone works on `localhost` and on any HTTPS address.
-
-## Earlier prototype
-
-The repository also contains a first version built on the Gemini Live API (`public/index.html`, `kam/prompt.js`, `kam/tools.js`, `scripts/`, and [NOTE.md](NOTE.md)). It is served at `/index.html` and needs `GEMINI_API_KEY`. The Sarvam agent above is the submitted version.

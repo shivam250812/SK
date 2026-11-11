@@ -1,26 +1,23 @@
 {
   "name": "snapdeal-virtual-kam",
   "version": "1.0.0",
-  "description": "Mini AI Virtual Key Account Manager: a voice agent that diagnoses a seller's sales drop and drives next actions",
+  "description": "Mini AI Voice KAM: a Sarvam voice agent that diagnoses a seller's sales drop and recommends next actions",
   "type": "module",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "smoke": "node scripts/smoke.js",
-    "build:sarvam": "esbuild node_modules/sarvam-conv-ai-sdk/dist/browser.js --bundle --format=esm --minify --outfile=public/vendor/sarvam-sdk.js"
+    "build:sdk": "esbuild node_modules/sarvam-conv-ai-sdk/dist/browser.js --bundle --format=esm --minify --outfile=public/vendor/sarvam-sdk.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
-    "@google/genai": "^1.0.0",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0",
-    "sarvam-conv-ai-sdk": "^0.0.42",
-    "ws": "^8.18.0"
+    "express": "^4.21.0"
   },
   "devDependencies": {
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "sarvam-conv-ai-sdk": "^0.0.42"
   }
 }
