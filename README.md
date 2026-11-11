@@ -1,17 +1,18 @@
-# Mini AI Virtual KAM for Snapdeal sellers
+# Mini AI Voice KAM for Snapdeal sellers
 
-A browser voice agent that a seller can call when sales drop. It diagnoses the problem from the seller's data, asks follow-up questions, recommends actions, and carries them out on the call.
+A browser voice agent ("Priya") that a Snapdeal seller can talk to when sales drop. She pulls up the seller's numbers, asks follow-up questions, recommends two or three actions, logs a note and a follow-up call, and closes with a summary. She follows the seller's language: English, Hindi, or another Indian language.
 
-See [NOTE.md](NOTE.md) for the models, workflow, design decisions and assumptions.
+The agent is built on [Sarvam](https://www.sarvam.ai) conversational agents. This repository holds the browser page, the server that keeps the API key private, and the tools the agent calls.
+
+See [NOTE_SARVAM.md](NOTE_SARVAM.md) for the models, workflow, design decisions, testing and assumptions.
 
 ## Run it
 
-Needs Node.js 20 or later and a Gemini API key from https://aistudio.google.com/apikey.
+Needs Node.js 20 or later and a Sarvam agent API key. Create the key in the Sarvam dashboard under Settings, API Key (`indus.sarvam.ai/samvaad/settings/api-key`). This is not the `sk_` key used for Sarvam's model APIs.
 
 ```bash
 npm install
-cp .env.example .env      # then put your key in GEMINI_API_KEY
-npm run smoke             # optional: checks the data, the tools and the live model
+cp .env.example .env      # then put your key in SARVAM_AGENT_API_KEY
 npm start
 ```
 
@@ -20,43 +21,53 @@ Open http://localhost:3000 in Chrome, click **Call your KAM**, allow the microph
 Things to try:
 
 - "My sales have dropped significantly this month. I don't understand why. Can you help me?"
-- Answer its questions in your own words, for example "my supplier was late and I also sell the same stock from my shop".
-- Interrupt it mid-sentence.
-- Switch to Hindi partway through, or pick Hinglish in the language menu before calling.
-- Say cash is tight and see the restock plan shrink.
-- Ask about a payment problem and it hands over to a human KAM.
+- Switch to Hindi partway through. She follows.
+- Tell her why stock ran out, for example "my supplier is late and the same stock sells in my shop".
+- Interrupt her mid-sentence.
+- Mention something the data does not cover, such as a category.
 
-## Sarvam agent page
-
-The same server also serves a second page, http://localhost:3000/sarvam.html, which calls the "Snapdeal Virtual KAM" agent built in Sarvam's dashboard.
-
-- Add `SARVAM_AGENT_API_KEY` to `.env` and restart. This is the key from the Samvaad dashboard (Settings, API Key), not the `sk_` key for Sarvam's model APIs. The key stays on the server: `server.js` uses it to fetch a one-time connection address for the browser.
-- The agent must have a committed version in Sarvam. A draft cannot be called.
-- The agent's IDs are set in `server.js` and can be overridden with `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID` and `SARVAM_APP_ID`.
-- `public/vendor/sarvam-sdk.js` is Sarvam's browser SDK, bundled with `npm run build:sarvam`.
-- Once the Sarvam key is set, `/` opens this page. The Gemini version stays at `/index.html`.
-- The agent's tools are endpoints on this server under `/api/tools/`. [SARVAM_SETUP.md](SARVAM_SETUP.md) lists them and how to connect them in Sarvam. What they do appears on the page during the call and is saved in `logs/`.
-
-## How it is built
+## How it works
 
 ```
-public/            the page: mic capture, audio playback, transcript, activity panel
-  app.js
-  pcm-worklet.js   converts mic audio to 16-bit PCM on the audio thread
-server.js          relays audio between the browser and Gemini Live, runs the tools
-kam/
-  prompt.js        the agent's instructions (persona, call flow, rules)
-  tools.js         9 tools: 3 analysis, 6 actions, plus the two guards
-  data.js          mock seller data, given figures and labelled assumptions
-scripts/
-  smoke.js         checks data consistency, tools, guards and the live connection
-  simulate.js      plays a scripted seller against the real model to test the prompt
+Browser --(1) start call--> Node server --adds API key--> Sarvam
+Browser <==(2) live audio both ways + transcript==> Sarvam agent
+                                                       |
+Node server <--(3) tool calls: data, note, follow-up, summary
+Browser <--(4) what the agent did, shown on the page-- Node server
 ```
 
-Two guards live in `kam/tools.js`, in code and not only in the prompt:
+1. The page asks the server to start a call. The server gets a one-time connection address from Sarvam using the API key, so the key never reaches the browser.
+2. The browser connects to the agent and streams audio both ways. The transcript appears as the call runs.
+3. The agent calls tools on this server for the seller's numbers and for its actions.
+4. The page shows each tool call as it happens and a written summary when the call ends. Every call is saved in `logs/`.
 
-- **Listen first:** no tool runs before the seller has spoken.
-- **Consent:** an action is held if the agent has asked a question and the seller has not yet answered.
+## Files
+
+```
+public/
+  sarvam.html      the page: call button, transcript, sample data, activity and summary panels
+  sarvam.js        starts and stops the call, shows the transcript and what the agent did
+  vendor/          Sarvam's browser SDK, bundled with `npm run build:sarvam`
+  styles.css
+server.js          key proxy, the agent's tools, activity feed and call log
+kam/data.js        the sample seller data from the assignment
+SARVAM_SETUP.md    how to connect the tools in Sarvam, and the instructions the agent needs
+NOTE_SARVAM.md     the one-page technical note
+sarvam_hello.py    a one-call check of a Sarvam model API key (not used by the app)
+```
+
+## The agent's tools
+
+Sarvam calls these over the internet, so they work only once the server is deployed. [SARVAM_SETUP.md](SARVAM_SETUP.md) has the exact fields for each.
+
+| Tool | Address | What it does |
+|---|---|---|
+| `get_seller_data` | `GET /api/tools/seller-data` | Returns the five metrics for last month and this month, with the differences already worked out, so the model does no arithmetic. |
+| `log_seller_team_note` | `POST /api/tools/note` | Saves a note for the seller team. |
+| `schedule_followup` | `POST /api/tools/followup` | Books a follow-up and returns the day and date to say. |
+| `send_call_summary` | `POST /api/tools/call-summary` | Sent by Sarvam when the call ends. Shows the written summary on the page. |
+
+The note, follow-up and summary are saved to files on this server. Nothing is sent to a Snapdeal system.
 
 ## Settings
 
@@ -64,22 +75,17 @@ Set in `.env`:
 
 | Variable | Purpose |
 |---|---|
-| `GEMINI_API_KEY` | Required. |
-| `GEMINI_LIVE_MODEL` | Optional. Pins one Live model. By default the server tries `gemini-3.8-live`, then `gemini-3.1-flash-live-preview`, then `gemini-2.5-flash-live-preview`. |
-| `GEMINI_VOICE` | Optional. Default voice, `Sulafat`. The page also has a voice menu. |
+| `SARVAM_AGENT_API_KEY` | Required. The agent key from the Sarvam dashboard. |
+| `SARVAM_ORG_ID`, `SARVAM_WORKSPACE_ID`, `SARVAM_APP_ID` | Optional. Point the page at a different agent. The defaults in `server.js` are the "Snapdeal Virtual KAM" agent. |
+| `SARVAM_TOOL_TOKEN` | Optional. If set, tool calls must send `Authorization: Bearer <value>`. |
 | `PORT` | Optional. Default 3000. |
+
+The agent must have a committed version in Sarvam. A draft cannot be called.
 
 ## Deploy
 
-The server needs WebSockets, so use a host that keeps a Node process running. `render.yaml` is included for Render: create a web service from this repository and set `GEMINI_API_KEY` in its environment. The microphone works on `localhost` and on any HTTPS address.
+`render.yaml` is included for Render: create a Blueprint from this repository and set `SARVAM_AGENT_API_KEY`. Then follow [SARVAM_SETUP.md](SARVAM_SETUP.md), using the deployed address in each tool. The microphone works on `localhost` and on any HTTPS address.
 
-## Testing the prompt without speaking
+## Earlier prototype
 
-```bash
-node scripts/simulate.js            # English seller
-node scripts/simulate.js hinglish   # Hinglish seller
-```
-
-This prints the agent's side of the call, every tool call, any held action, and the final summary.
-
-Every real call is also saved as a text transcript in `logs/`.
+The repository also contains a first version built on the Gemini Live API (`public/index.html`, `kam/prompt.js`, `kam/tools.js`, `scripts/`, and [NOTE.md](NOTE.md)). It is served at `/index.html` and needs `GEMINI_API_KEY`. The Sarvam agent above is the submitted version.
