@@ -34,9 +34,9 @@ const SARVAM = {
   // The agent service needs its own key (Samvaad Settings > API Key). The sk_
   // key for Sarvam's model APIs is rejected with "Invalid API key format".
   key: process.env.SARVAM_AGENT_API_KEY || '',
-  org: process.env.SARVAM_ORG_ID || '01a1c4b1-c611-7933-94b0-81837d7bb68b',
-  workspace: process.env.SARVAM_WORKSPACE_ID || '01a1c4b1-c617-71a2-9ce2-1fa22b300779',
-  app: process.env.SARVAM_APP_ID || 'Conversatio-c85245fc-bf92',
+  org: process.env.SARVAM_ORG_ID || '019f7ba6-60c2-70f1-a03e-82550feba788',
+  workspace: process.env.SARVAM_WORKSPACE_ID || '019f7ba6-60d2-7572-b115-838d575c1676',
+  app: process.env.SARVAM_APP_ID || 'snapdeal-0e571f18-d5c1',
   runtime: 'https://apps.sarvam.ai/api/app-runtime/',
   // The agent's fixed opening line, as set in Sarvam. Sarvam speaks it but does
   // not send it in the transcript, so the page shows this text. Keep them the same.
