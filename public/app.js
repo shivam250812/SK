@@ -178,7 +178,9 @@ function showSummary(summary) {
   add('Key issues', summary.issues);
   add('Recommendations', summary.recommendations);
   add('Next steps', summary.nextSteps);
-  add('Outcome', summary.outcome);
+  // The outcome arrives as a code such as action_plan_delivered. Show it as words.
+  const outcome = (summary.outcome || '').replace(/_/g, ' ');
+  add('Outcome', outcome && outcome[0].toUpperCase() + outcome.slice(1));
   els.summaryCard.hidden = !els.summary.children.length;
 }
 
