@@ -131,10 +131,10 @@ const sessionOf = (req) => clip(req.input.session, 80) || null;
 // What the agent is told about the seller's last call, so it can follow up on it.
 async function previousCall() {
   try {
-    // The last call that ended with agreed steps. Calls that were cut short have
+    // The last call that ended with agreed steps and a logged note or follow-up. Calls that were cut short have
     // nothing to follow up on, and their summaries can hold half-heard numbers.
     const recent = await listCalls(SELLER_ID, 5);
-    const last = recent.find((call) => call.nextSteps.some((step) => !EMPTY.test(step)));
+    const last = recent.find((call) => call.actions.length && call.nextSteps.some((step) => !EMPTY.test(step)));
     if (!last) return { had_previous_call: false };
     const days = Math.floor((Date.now() - new Date(last.at).getTime()) / 86400000);
     return {
