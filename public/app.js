@@ -372,3 +372,28 @@ els.muteBtn.addEventListener('click', () => {
     els.muteBtn.textContent = 'Unmute';
   }
 });
+
+// Fill the sample data table from the server, so it always shows the same
+// figures the agent's tool returns. The table in the page is the fallback.
+async function loadMetrics() {
+  try {
+    const { lastMonth, thisMonth } = await (await fetch('/api/metrics')).json();
+    const rupees = (n) => `₹${n.toLocaleString('en-IN')}`;
+    const rows = [
+      ['Sales', rupees(lastMonth.sales), rupees(thisMonth.sales)],
+      ['Orders', lastMonth.orders, thisMonth.orders],
+      ['Cancellation rate', `${lastMonth.cancellationRate}%`, `${thisMonth.cancellationRate}%`],
+      ['Average selling price', rupees(lastMonth.asp), rupees(thisMonth.asp)],
+      ['Out-of-stock products', lastMonth.oosProducts, thisMonth.oosProducts],
+    ];
+    const table = document.getElementById('metrics');
+    while (table.rows.length > 1) table.deleteRow(1);
+    for (const cells of rows) {
+      const tr = table.insertRow();
+      for (const cell of cells) tr.insertCell().textContent = cell;
+    }
+  } catch {
+    // Keep the table already in the page.
+  }
+}
+loadMetrics();

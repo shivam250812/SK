@@ -45,6 +45,9 @@ const SARVAM = {
     'Welcome to Snapdeal Seller Care. I am Priya, your virtual Key Account Manager. How shall I help you today?',
 };
 
+// The page's data table reads the same figures the agent's tool returns.
+app.get('/api/metrics', (_req, res) => res.json(metrics));
+
 app.get('/api/sarvam/config', (_req, res) =>
   res.json({ hasKey: Boolean(SARVAM.key), org_id: SARVAM.org, workspace_id: SARVAM.workspace, app_id: SARVAM.app, greeting: SARVAM.greeting }),
 );
