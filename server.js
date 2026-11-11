@@ -99,7 +99,26 @@ tools.use((req, res, next) => {
   if (TOOL_TOKEN && req.get('authorization') !== `Bearer ${TOOL_TOKEN}`) return res.status(401).json({ error: 'unauthorized' });
   next();
 });
-const sessionOf = (req) => clip(req.body?.session || req.query.session, 80) || null;
+// Sarvam may send a tool's parameters in the address, in the body, or nested one
+// level down in the body. Read all three, so the form's layout does not matter.
+const lastCalls = [];
+function input(req) {
+  const body = req.body && typeof req.body === 'object' ? req.body : {};
+  const nested = ['parameters', 'params', 'arguments', 'args', 'data', 'body', 'variables', 'agent_variables']
+    .map((key) => body[key])
+    .filter((value) => value && typeof value === 'object' && !Array.isArray(value));
+  return Object.assign({}, req.query, body, ...nested);
+}
+tools.use((req, _res, next) => {
+  req.input = input(req);
+  // Shape of recent tool calls (names and sizes only), to help when connecting tools.
+  const sizes = (obj) => Object.fromEntries(Object.entries(obj || {}).map(([k, v]) => [k, typeof v === 'object' ? 'object' : String(v).length]));
+  lastCalls.push({ at: new Date().toISOString(), method: req.method, path: req.path, query: sizes(req.query), body: sizes(req.body) });
+  if (lastCalls.length > 20) lastCalls.shift();
+  next();
+});
+tools.get('/recent-calls', (_req, res) => res.json(lastCalls));
+const sessionOf = (req) => clip(req.input.session, 80) || null;
 
 tools.get('/seller-data', (req, res) => {
   const { lastMonth: last, thisMonth: now } = metrics;
@@ -128,15 +147,15 @@ tools.get('/seller-data', (req, res) => {
 });
 
 tools.post('/note', (req, res) => {
-  const note = clip(req.body?.note);
+  const note = clip(req.input.note);
   if (!note) return res.status(400).json({ error: 'note is required' });
   const entry = record('action', 'Note logged for the seller team', note, { session: sessionOf(req) });
   res.json({ status: 'logged', reference: `NOTE-${entry.id}` });
 });
 
 tools.post('/followup', (req, res) => {
-  const days = Math.min(Math.max(parseInt(req.body?.in_days, 10) || 7, 1), 30);
-  const topic = clip(req.body?.topic, 200) || 'Check stock and cancellations';
+  const days = Math.min(Math.max(parseInt(req.input.in_days, 10) || 7, 1), 30);
+  const topic = clip(req.input.topic, 200) || 'Check stock and cancellations';
   const when = new Date(Date.now() + days * 86400000);
   const options = { timeZone: 'Asia/Kolkata' };
   const day = when.toLocaleDateString('en-IN', { ...options, weekday: 'long' });
@@ -146,7 +165,7 @@ tools.post('/followup', (req, res) => {
 });
 
 tools.post('/call-summary', (req, res) => {
-  const body = req.body || {};
+  const body = req.input;
   const summary = {
     seller: [clip(body.seller_name, 80), clip(body.store_name, 80)].filter((v) => v && !v.startsWith('<')).join(', '),
     outcome: clip(body.call_outcome, 120),
@@ -155,8 +174,10 @@ tools.post('/call-summary', (req, res) => {
     recommendations: toList(body.recommendations),
     nextSteps: toList(body.next_steps),
   };
-  record('summary', 'Call summary saved', summary.overview, { session: sessionOf(req), summary });
-  res.json({ status: 'saved' });
+  // An empty summary means the agent's variables were not filled. Do not show a blank card.
+  const hasContent = summary.overview || summary.issues.length || summary.recommendations.length || summary.nextSteps.length;
+  if (hasContent) record('summary', 'Call summary saved', summary.overview, { session: sessionOf(req), summary });
+  res.json({ status: hasContent ? 'saved' : 'empty' });
 });
 
 app.use('/api/tools', tools);
