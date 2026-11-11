@@ -7,7 +7,7 @@
 | Layer | Choice | Why |
 |---|---|---|
 | Voice platform | Sarvam conversational agents (Samvaad) | One managed pipeline for listening, reasoning and speaking, built for Indian languages and code-mixed speech. |
-| Speech-to-text, language model, text-to-speech | Sarvam's own models, as configured in the agent: **[fill in from the agent's Settings]** | Handles Hindi with English business words, and switches language mid-call. |
+| Speech-to-text, language model, text-to-speech | Sarvam's own models inside the agent pipeline; the voice is "Kavya" (conversational) | Handles Hindi with English business words, and switches language mid-call. |
 | Tools | Four API tools that call my server | Keeps the numbers and the actions in code, outside the model. |
 | App | Node.js (Express), plain HTML and JavaScript, Sarvam browser SDK | Small enough to explain line by line. |
 
@@ -25,11 +25,11 @@ Browser <--(4) what the agent did, shown on the page-- Node server
 2. The browser streams audio both ways with the agent and shows the transcript.
 3. The agent calls `get_seller_data` for the numbers, `log_seller_team_note` and `schedule_followup` for actions, and Sarvam sends `send_call_summary` when the call ends.
 4. Each tool call appears on the page as it happens and the written summary appears at the end.
-5. The summary and actions are saved to a Postgres database. The page lists past calls, and on the next call the data tool tells the agent what was agreed last time, so it can ask whether the seller did it.
+5. The summary and actions are saved to a Postgres database (Neon). The page lists past calls, and on the next call the data tool tells the agent what was agreed last time, so it can ask whether the seller did it.
 
 ## Conversation design
 
-Greet and listen; fetch the data; ask at most two questions, one of them open, to find what the data cannot show (why stock ran out); share the drop, then the cause; recommend actions fitted to the answers, most urgent first; recap once and say goodbye. Style rules keep it sounding like a call: short turns, one question at a time, no repeated questions, replies in the seller's language.
+Greet and listen; fetch the data; say the size of the drop; ask two or three questions, one at a time, to find what the data cannot show (why stock ran out, whether the same stock is sold elsewhere); explain the cause; recommend actions fitted to the answers, most urgent first; recap once and say goodbye. Style rules keep it sounding like a call: short turns, one question at a time, no repeated questions, replies in the seller's language.
 
 ## What the data says
 
@@ -45,25 +45,25 @@ Average selling price is flat at ₹500, so pricing is not the cause. Orders fel
 
 ## How I tested and improved it
 
-I rated each test call against the assignment's five criteria and measured recordings for response time, talk share and turn length. Each round of findings went back into the instructions.
+I rated each test call against the assignment's five criteria, as strictly as I could, and fed each round of findings back into the instructions and the code. My own rating went from 64 on the first call to 89 on the latest.
 
-| Version | Main change | Score (my own rating, /100) |
-|---|---|---|
-| First call | Baseline | 64 |
-| + root-cause questions, all five metrics | Found shared stock and supplier delay | 73 |
-| + immediate fix, numbers, single summary | Advice fitted to the seller | 77 |
-| + open questions, data in two turns | Less interrogation, shorter call | 80 |
-
-Measured on recordings: response time about 1.7 seconds; the agent's share of talk time fell from 66% to 61%.
+| What testing found | Fix |
+|---|---|
+| The agent quoted figures that were not from the tool | Removed every number from the instructions. To prove the fix, I swapped all the sample data for different values and the agent quoted the new ones. |
+| It said a follow-up date that differed from the one booked | It now repeats the date exactly as the tool returns it. |
+| It assumed the seller had a shop | It asks first, and only uses what the seller has said. |
+| Advice was generic | Each action now carries a time or an amount ("today", "half the stock for online"). |
+| Half-finished test calls were recalled as the "previous call" | Only calls that ended with a logged note or follow-up are remembered. |
 
 ## Assumptions
 
 - The sample data is one seller, last month against this month, with no category or product split. The agent says so if asked.
-- The note, follow-up and call history are saved on my own server and database. Nothing is sent to a Snapdeal system.
-- The sample data is one seller, so all calls are stored under one demo seller. Anyone using the demo link sees the same history.
+- The note, follow-up and call history are saved on my own server and database, under one demo seller. Nothing is sent to a Snapdeal system, and anyone using the demo link sees the same history.
 - The seller's name and store are not in the sample data, so the agent does not use them.
 
 ## Limits and next steps
 
 - Tested by one speaker in Hindi, Marathi and English. Not yet tested on noisy lines or with many speakers.
+- A full call runs close to three minutes, and the agent sometimes starts speaking when the seller pauses mid-sentence. Both are the next things I would tune.
+- The demo is on a free host that sleeps when idle, so the first load can take about a minute.
 - Next: live seller data behind the same data tool, tools that update stock counts and set low-stock alerts, and a phone number so sellers can dial in.
