@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Virtual KAM | Voice prototype</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Virtual KAM</h1>
+        <p class="sub">AI voice account manager for Snapdeal sellers. Assignment prototype, mock data.</p>
+      </div>
+      <div class="seller-chip" id="sellerChip"></div>
+    </header>
+
+    <main class="layout">
+      <section class="card call">
+        <div class="orb-wrap">
+          <div class="orb" id="orb"></div>
+        </div>
+        <p class="status" id="status">Ready when you are</p>
+        <p class="timer" id="timer"></p>
+        <div class="controls">
+          <button id="callBtn" class="btn primary">Call your KAM</button>
+          <button id="muteBtn" class="btn ghost" hidden>Mute</button>
+          <label class="lang">
+            <span>Language</span>
+            <select id="language">
+              <option value="auto">Auto (follows the seller)</option>
+              <option value="english">English</option>
+              <option value="hinglish">Hinglish</option>
+            </select>
+          </label>
+          <label class="lang">
+            <span>Voice</span>
+            <select id="voice"></select>
+          </label>
+        </div>
+        <p class="hint" id="hint">
+          Try: "My sales have dropped significantly this month. I don't understand why. Can you help me?"
+          You can speak in English or Hindi, and interrupt at any time. Headphones give the best result.
+        </p>
+
+        <h2>Conversation</h2>
+        <div class="transcript" id="transcript">
+          <p class="empty">The live transcript appears here.</p>
+        </div>
+      </section>
+
+      <aside class="side">
+        <section class="card">
+          <h2>Account snapshot</h2>
+          <table class="metrics" id="metrics"></table>
+        </section>
+
+        <section class="card">
+          <h2>What the agent is doing</h2>
+          <ol class="activity" id="activity">
+            <li class="empty">Data checks and actions appear here during the call.</li>
+          </ol>
+        </section>
+
+        <section class="card" id="summaryCard" hidden>
+          <h2>Call summary</h2>
+          <div id="summary"></div>
+        </section>
+      </aside>
+    </main>
+
+    <footer class="foot" id="foot"></footer>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
