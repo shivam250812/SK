@@ -8,6 +8,47 @@
 import { ConversationAgent, BrowserAudioInterface, InteractionType, AgentState } from './vendor/sarvam-sdk.js';
 
 const $ = (id) => document.getElementById(id);
+
+// --- Smoother playback --------------------------------------------------------
+// The SDK plays each piece of the agent's voice the moment it arrives, and
+// stretches it from 16 kHz to the speaker's rate one piece at a time. A late
+// piece then leaves a tiny hole, and every join can click, which is heard as
+// crackling. This version:
+//   - holds back 200 ms at the start of each utterance, so late pieces still
+//     land in time,
+//   - hands the audio to the browser at its own rate and lets the browser do
+//     the conversion,
+//   - fades in over a few milliseconds after any gap, so restarts do not click.
+class SmoothAudio extends BrowserAudioInterface {
+  static LEAD = 0.2;
+
+  async output(audio, sampleRate = 16000) {
+    const ctx = this.playbackContext;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') await ctx.resume();
+    const samples = this.decodeInt16PCM(audio);
+    if (!samples.length) return;
+
+    const now = ctx.currentTime;
+    const restarting = this.nextPlayTime <= now + 0.01;
+    if (restarting) {
+      this.nextPlayTime = now + SmoothAudio.LEAD;
+      const fade = Math.min(samples.length, Math.round(sampleRate * 0.005));
+      for (let i = 0; i < fade; i++) samples[i] *= i / fade;
+    }
+
+    const buffer = ctx.createBuffer(1, samples.length, sampleRate);
+    buffer.copyToChannel(samples, 0);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.connect(this.outputGainNode || ctx.destination);
+    this.activeSources.add(source);
+    source.onended = () => this.activeSources.delete(source);
+    source.start(this.nextPlayTime);
+    this.nextPlayTime += buffer.duration;
+  }
+}
+
 const els = {
   orb: $('orb'),
   status: $('status'),
@@ -269,7 +310,7 @@ async function startCall() {
         // Starting language. Empty leaves it to the agent's own setting in Sarvam.
         ...($('language').value ? { initial_language_name: $('language').value } : {}),
       },
-      audioInterface: new BrowserAudioInterface(16000),
+      audioInterface: new SmoothAudio(16000),
       transcriptCallback: async (msg) => addTranscript(msg.role, msg.content),
       // The fixed greeting may not arrive as a transcript. If the agent sends
       // text before anything is on screen, show it as Priya's first line.
