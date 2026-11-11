@@ -35,10 +35,15 @@ const SARVAM = {
   workspace: process.env.SARVAM_WORKSPACE_ID || '01a1c4b1-c617-71a2-9ce2-1fa22b300779',
   app: process.env.SARVAM_APP_ID || 'Conversatio-c85245fc-bf92',
   runtime: 'https://apps.sarvam.ai/api/app-runtime/',
+  // The agent's fixed opening line, as set in Sarvam. Sarvam speaks it but does
+  // not send it in the transcript, so the page shows this text. Keep them the same.
+  greeting:
+    process.env.SARVAM_GREETING ||
+    'Welcome to Snapdeal Seller Care. I am Priya, your virtual Key Account Manager. How shall I help you today?',
 };
 
 app.get('/api/sarvam/config', (_req, res) =>
-  res.json({ hasKey: Boolean(SARVAM.key), org_id: SARVAM.org, workspace_id: SARVAM.workspace, app_id: SARVAM.app }),
+  res.json({ hasKey: Boolean(SARVAM.key), org_id: SARVAM.org, workspace_id: SARVAM.workspace, app_id: SARVAM.app, greeting: SARVAM.greeting }),
 );
 
 app.get('/api/sarvam/orgs/:org/workspaces/:workspace/apps/:app/url', async (req, res) => {

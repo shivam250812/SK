@@ -256,6 +256,9 @@ async function startCall() {
     els.muteBtn.hidden = false;
     startTimer();
     startPolling();
+    // Show the opening line (see the greeting note in server.js). Skipped when a
+    // starting language is forced, because Sarvam then speaks a translation.
+    if (!lastBubble && config.greeting && ['', 'English'].includes($('language').value)) addTranscript('bot', config.greeting);
   } catch (err) {
     console.error(err);
     const current = agent;
